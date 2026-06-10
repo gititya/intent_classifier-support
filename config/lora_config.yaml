@@ -1,0 +1,39 @@
+# LoRA fine-tuning config for mlx-lm
+# Model: Qwen2.5-1.5B-Instruct-4bit
+# Task: 8-class intent classification
+
+model: "mlx-community/Qwen2.5-1.5B-Instruct-4bit"
+
+# LoRA rank: how many extra parameters the adapter adds per layer.
+# Rank 8 is the standard starting point for classification tasks.
+# Higher rank = more capacity but more memory and overfitting risk.
+lora_rank: 8
+
+# Alpha scales the adapter's contribution relative to the base model.
+# Rule of thumb: set alpha = 2 * rank. At rank 8, alpha 16 is standard.
+lora_alpha: 16
+
+# Dropout on the adapter layers. Small amount of regularization.
+# Helps slightly with overfitting on small datasets like this one.
+lora_dropout: 0.05
+
+# How many examples the model sees before updating weights.
+# Batch size 4 is safe for 16GB. Larger batches are smoother but use more memory.
+batch_size: 4
+
+# Learning rate: how big each weight update step is.
+# 1e-4 is the standard LoRA starting point. Too high = unstable loss.
+learning_rate: 1e-4
+
+# Number of passes through the training data.
+# At 576 examples, 5 epochs = ~720 gradient steps. Watch for val loss diverging.
+num_epochs: 5
+
+# How often (in steps) to print train + val loss.
+steps_per_eval: 50
+
+# Where to save adapter weights during and after training.
+adapter_path: "adapters/"
+
+# Save a checkpoint at the end of every epoch.
+save_every: 1

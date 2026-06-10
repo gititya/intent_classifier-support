@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.env
+.env.*
+*.pem
+*.p12
+*serviceaccount*
+
+# HuggingFace cache — large, not project-specific
+.cache/
+
+# Keep adapters but ignore intermediate checkpoints to save repo size
+adapters/0000*
+adapters_v1_original/0000*
