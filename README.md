@@ -1,8 +1,6 @@
-# Intent Classifier — Fine-Tuning Experiment
+# [EXPERIMENT] Intent Classifier
 
-My first fine-tuning experiment. Fine-tuned `Qwen2.5-1.5B-Instruct` to classify customer support messages into 8 labels: `billing`, `account_access`, `refund`, `product_how_to`, `bug_report`, `cancellation`, `delivery`, `other`.
-
-The goal wasn't to ship a classifier. It was to learn the mechanics: data formatting, LoRA config, train/val split, inference, eval, baseline comparison. A kata.
+Fine-tuned `Qwen2.5-1.5B-Instruct` to classify customer support messages into 8 labels: `billing`, `account_access`, `refund`, `product_how_to`, `bug_report`, `cancellation`, `delivery`, `other`.
 
 ## The one finding
 
@@ -16,7 +14,7 @@ That gap is what the experiment was actually for.
 
 **Five stages:**
 
-1. **Data prep** — Downloaded 26K Bitext rows, mapped 27 intents to 8 labels, capped at 100 per class to balance, split 80/20. Output: 576 train, 144 val examples in chat JSONL format.
+1. **Data prep** — Downloaded 26K Bitext rows (Huggingface), mapped 27 intents to 8 labels, capped at 100 per class to balance, split 80/20. Output: 576 train, 144 val examples in chat JSONL format.
 2. **LoRA config** — Rank 8, alpha 16, lr 1e-4, batch 4, 720 iters (~5 passes through the data).
 3. **Training** — `mlx-lm` on M3 MacBook Air 16GB. 20 minutes. Peak memory: ~2GB. Loss: 1.28 → 0.15.
 4. **Eval** — 99.3% on the synthetic val set. Confusion matrix clean — one `other` message predicted as `account_access`.
@@ -28,7 +26,7 @@ That gap is what the experiment was actually for.
 
 Used Claude Haiku to paraphrase every training example without the obvious keyword. For `other`, generated fresh diverse examples instead — compliments, rants, off-topic questions — since paraphrasing Bitext `other` rows just produces more newsletter-unsubscribe variations. Dataset grew from 576 → 2,104 examples. Retrained (~75 minutes).
 
-Result: still 60% on natural language. Different failures though.
+Result: still 60% on natural language -different failures though.
 
 **Fixed:** `cancellation` ✓ — paraphrases without "cancel" worked. `other` ✓ — diverse generation worked.
 
@@ -39,8 +37,7 @@ Result: still 60% on natural language. Different failures though.
 ## What this is not
 
 1. NOT a production classifier. Bitext is synthetic. The labels are generic e-commerce. The 60% on natural language is the honest number.
-2. NOT a serious portfolio artifact — that's what the notes said before I started. The value is in having run the full loop once.
-3. NOT a benchmark of Qwen2.5-1.5B. A different dataset with tighter label definitions would produce a different result.
+2. NOT a benchmark of Qwen2.5-1.5B. A different dataset with tighter label definitions would produce a different result.
 
 ## Stack
 
@@ -58,8 +55,6 @@ scripts/augment_data.py   — Haiku paraphrase augmentation
 scripts/eval.py           — accuracy + confusion matrix
 scripts/natural_test.py   — 10 hand-written messages, honest test
 config/lora_config.yaml   — training hyperparameters
-experiment-walkthrough.md — full stage-by-stage explanation
-teaching-style-guide.md   — how to teach experiments like this
 ```
 
 ## Results
