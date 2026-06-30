@@ -12,3 +12,12 @@ __pycache__/
 # Keep adapters but ignore intermediate checkpoints to save repo size
 adapters/0000*
 adapters_v1_original/0000*
+
+# New experiment model artifacts
+models/
+
+# Experiment docs — live in Obsidian, not the repo
+CLAUDE.md
+SKILL.md
+experiment-walkthrough.md
+teaching-style-guide.md
