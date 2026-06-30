@@ -34,10 +34,40 @@ Result: still 60% on natural language -different failures though.
 
 **The real fix:** Add bug_report examples that are clearly technical — error codes, stack traces, broken UI, crashes. That's a label definition problem, not a volume problem. More examples of the wrong kind made it worse, not better.
 
+## The encoder round — was it the model?
+
+The obvious next question: maybe a 1.5B decoder LLM is the wrong tool. So I built two more classifiers on the *same* data and tested them on the *same* 10 natural messages.
+
+- **ModernBERT** (`answerdotai/ModernBERT-base`, 149M encoder) — the honest 2026 replacement for the old "small BERT baseline." Full fine-tune, v1 (576) and v2 (2,104).
+- **SetFit** (`all-MiniLM-L6-v2` + logistic head) — contrastive few-shot, chosen because the bottleneck looked like small/overlapping-label data, not model size. Full, 16-shot, and v2.
+
+The hypothesis was that SetFit's contrastive objective would resist keyword-memorization and close the gap.
+
+**It didn't.** Every architecture landed in the same 40–60% natural-language band:
+
+| Model | Synthetic val | Natural | Macro-F1 (nat) | % below 0.8 conf |
+|---|---|---|---|---|
+| Qwen LoRA v1 (w/ label hint) | 99.3% | 60% | — | — |
+| Qwen LoRA v2 (w/ label hint) | 97.2% | 60% | — | — |
+| ModernBERT v1 | 90.3% | 50% | 0.350 | 60% |
+| ModernBERT v2 | 95.1% | 40% | 0.208 | 70% |
+| SetFit v1 (full) | 96.5% | 50% | 0.362 | 60% |
+| SetFit v1 (16-shot) | 89.6% | 20% | 0.125 | 100% |
+| SetFit v2 (full) | 95.8% | 50% | 0.333 | 30% |
+
+Two things fell out of this:
+
+1. **More data made it worse.** ModernBERT went 50% → 40% on natural language when trained on 4× the augmented data. The Haiku paraphrases added more template-shaped variation, not natural diversity — so the models got *more* confident about the wrong (keyword-based) pattern.
+2. **The confidence column is the actually-usable output.** SetFit's 16-shot model put 100% of its hard-case predictions below the 0.8 threshold — it *knew* it didn't know. SetFit v2 was best-calibrated (only 30% uncertain). The viable product here isn't "auto-label everything," it's "auto-route the confident ones, escalate the rest to a human."
+
+**The conclusion: the ceiling is the data, not the model.** A 1.5B decoder, a 149M encoder, and a MiniLM + logistic head all converge to the same number. The 8-class space has genuine ambiguity (billing vs bug_report, cancellation vs account_access) that synthetic Bitext can't teach, because it never contains keyword-free, naturally-ambiguous messages. Full table and per-model failure patterns in `EXPERIMENTS.md`.
+
+(I also checked CFPB's 49K real consumer complaints as a real-language source — rejected: 77% credit-reporting, a taxonomy with no delivery/how-to/bug/cancellation, and `XXXX` redaction tokens that would just swap one template artifact for another.)
+
 ## What this is not
 
-1. NOT a production classifier. Bitext is synthetic. The labels are generic e-commerce. The 60% on natural language is the honest number.
-2. NOT a benchmark of Qwen2.5-1.5B. A different dataset with tighter label definitions would produce a different result.
+1. NOT a production classifier. Bitext is synthetic. The labels are generic e-commerce. The 40–60% on natural language is the honest number.
+2. NOT a benchmark of Qwen2.5-1.5B, ModernBERT, or SetFit. A different dataset with tighter label definitions would produce a different result for all three.
 
 ## Stack
 
@@ -50,17 +80,25 @@ Result: still 60% on natural language -different failures though.
 ## Files
 
 ```
-scripts/prepare_data.py   — download, map, balance, split
-scripts/augment_data.py   — Haiku paraphrase augmentation
-scripts/eval.py           — accuracy + confusion matrix
-scripts/natural_test.py   — 10 hand-written messages, honest test
-config/lora_config.yaml   — training hyperparameters
+scripts/prepare_data.py     — download, map, balance, split
+scripts/augment_data.py     — Haiku paraphrase augmentation
+scripts/eval.py             — accuracy + confusion matrix (Qwen)
+scripts/natural_test.py     — 10 hand-written messages, honest test
+scripts/modernbert_train.py — ModernBERT full fine-tune (v1 + v2)
+scripts/setfit_train.py     — SetFit contrastive (full, 16-shot, v2)
+scripts/eval_compare.py     — unified harness: synthetic + natural, all models
+config/lora_config.yaml     — training hyperparameters
+EXPERIMENTS.md              — full comparison table + per-model failure patterns
 ```
 
 ## Results
+
+Qwen LoRA round (the original experiment):
 
 | Model | Synthetic val | Natural language |
 |---|---|---|
 | Baseline | 50.7% | — |
 | v1 fine-tune (576 examples) | 99.3% | 60% |
 | v2 fine-tune (2,104 examples, augmented) | 97.2% | 60% |
+
+Full three-way comparison (Qwen vs ModernBERT vs SetFit) is in the table above and in `EXPERIMENTS.md`. Headline: everything plateaus at 40–60% on natural language — **the ceiling is the data, not the model.**

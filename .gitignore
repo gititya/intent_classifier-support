@@ -10,8 +10,8 @@ __pycache__/
 .cache/
 
 # Keep adapters but ignore intermediate checkpoints to save repo size
-adapters/0000*
-adapters_v1_original/0000*
+adapters/0*
+adapters_v1_original/0*
 
 # New experiment model artifacts
 models/
