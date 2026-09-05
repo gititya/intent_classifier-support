@@ -1,12 +1,14 @@
 # [EXPERIMENT] Intent Classifier
 
+**Three model families, same 40–60% on natural language (n=10). The ceiling was the synthetic training data, not the model.**
+
 Fine-tuned `Qwen2.5-1.5B-Instruct` to classify customer support messages into 8 labels: `billing`, `account_access`, `refund`, `product_how_to`, `bug_report`, `cancellation`, `delivery`, `other`.
 
 ## The one finding
 
-Synthetic training data makes you overconfident.
+Synthetic training data made the models overconfident.
 
-The fine-tuned model hit 99.3% accuracy on the validation set. Then I wrote 10 messages myself — natural language, no Bitext template patterns — and it dropped to 60%. The model learned surface keywords, not intent. "Cancel my subscription" → `cancellation`. "I don't want to keep paying for this" → `other`.
+The fine-tuned model hit 99.3% accuracy on 144 synthetic validation examples. Then I wrote ten messages myself—natural language, with no Bitext template patterns—and it dropped to 60% (n=10). The model learned surface keywords, not intent. "Cancel my subscription" → `cancellation`. "I don't want to keep paying for this" → `other`.
 
 That gap is what the experiment was actually for.
 
@@ -14,19 +16,19 @@ That gap is what the experiment was actually for.
 
 **Five stages:**
 
-1. **Data prep** — Downloaded 26K Bitext rows (Huggingface), mapped 27 intents to 8 labels, capped at 100 per class to balance, split 80/20. Output: 576 train, 144 val examples in chat JSONL format.
+1. **Data prep** — Downloaded 26K Bitext rows (Hugging Face), mapped 27 intents to 8 labels, capped at 100 per class to balance, then produced 576 training and 144 validation examples in chat JSONL format.
 2. **LoRA config** — Rank 8, alpha 16, lr 1e-4, batch 4, 720 iters (~5 passes through the data).
 3. **Training** — `mlx-lm` on M3 MacBook Air 16GB. 20 minutes. Peak memory: ~2GB. Loss: 1.28 → 0.15.
-4. **Eval** — 99.3% on the synthetic val set. Confusion matrix clean — one `other` message predicted as `account_access`.
-5. **Baseline** — Same eval on the untouched base model: 50.7%. The +48.6pp came from consistency, not new knowledge. The base model knew what "cancellation" meant; it just wasn't reliable about outputting exactly one label word.
+4. **Eval** — 99.3% on 144 synthetic validation examples. The one miss was an `other` message predicted as `account_access`.
+5. **Baseline** — The same 144-example evaluation on the untouched base model scored 50.7%. The 48.6-point gain came from consistency, not new knowledge. The base model knew what "cancellation" meant; it just was not reliable about outputting exactly one label word.
 
-**Then the natural language test revealed the real number: 60%.**
+**Then the ten-message natural-language test revealed the real number: 60%.**
 
 ## The augmentation round
 
 Used Claude Haiku to paraphrase every training example without the obvious keyword. For `other`, generated fresh diverse examples instead — compliments, rants, off-topic questions — since paraphrasing Bitext `other` rows just produces more newsletter-unsubscribe variations. Dataset grew from 576 → 2,104 examples. Retrained (~75 minutes).
 
-Result: still 60% on natural language -different failures though.
+Result: still 60% on the same ten natural messages, but with different failures.
 
 **Fixed:** `cancellation` ✓ — paraphrases without "cancel" worked. `other` ✓ — diverse generation worked.
 
@@ -43,9 +45,9 @@ The obvious next question: maybe a 1.5B decoder LLM is the wrong tool. So I buil
 
 The hypothesis was that SetFit's contrastive objective would resist keyword-memorization and close the gap.
 
-**It didn't.** Every architecture landed in the same 40–60% natural-language band:
+**It didn't.** Every architecture landed in the same 40–60% natural-language band on ten messages. One different answer changes a score by ten points, so differences between adjacent results are noise.
 
-| Model | Synthetic val | Natural | Macro-F1 (nat) | % below 0.8 conf |
+| Model | Synthetic val (n=144) | Natural (n=10) | Macro-F1 (n=10) | Below 0.8 confidence (n=10) |
 |---|---|---|---|---|
 | Qwen LoRA v1 (w/ label hint) | 99.3% | 60% | — | — |
 | Qwen LoRA v2 (w/ label hint) | 97.2% | 60% | — | — |
@@ -57,16 +59,16 @@ The hypothesis was that SetFit's contrastive objective would resist keyword-memo
 
 Two things fell out of this:
 
-1. **More data made it worse.** ModernBERT went 50% → 40% on natural language when trained on 4× the augmented data. The Haiku paraphrases added more template-shaped variation, not natural diversity — so the models got *more* confident about the wrong (keyword-based) pattern.
-2. **The confidence column is the actually-usable output.** SetFit's 16-shot model put 100% of its hard-case predictions below the 0.8 threshold — it *knew* it didn't know. SetFit v2 was best-calibrated (only 30% uncertain). The viable product here isn't "auto-label everything," it's "auto-route the confident ones, escalate the rest to a human."
+1. **More data made it worse.** ModernBERT went from 50% to 40% on the same ten natural messages when trained on about four times the augmented data. The Haiku paraphrases added more template-shaped variation, not natural diversity, so the models became more confident about the wrong keyword pattern.
+2. **The confidence column is the useful output.** SetFit's 16-shot model put 100% of ten hard-case predictions below the 0.8 threshold—it knew it did not know. SetFit v2 put 30% of the same ten predictions below the threshold. This small test points toward routing high-confidence messages and sending the rest to a person; it does not validate that product decision.
 
-**The conclusion: the ceiling is the data, not the model.** A 1.5B decoder, a 149M encoder, and a MiniLM + logistic head all converge to the same number. The 8-class space has genuine ambiguity (billing vs bug_report, cancellation vs account_access) that synthetic Bitext can't teach, because it never contains keyword-free, naturally-ambiguous messages. Full table and per-model failure patterns in `EXPERIMENTS.md`.
+**The conclusion: the ceiling is the data, not the model.** A 1.5B decoder, a 149M encoder, and a MiniLM plus logistic head all landed between 40% and 60% on the same ten natural messages. The eight-class space has genuine ambiguity (`billing` vs `bug_report`, `cancellation` vs `account_access`) that synthetic Bitext could not teach because it lacks keyword-free, naturally ambiguous messages. Full table and per-model failure patterns are in `EXPERIMENTS.md`.
 
 (I also checked CFPB's 49K real consumer complaints as a real-language source — rejected: 77% credit-reporting, a taxonomy with no delivery/how-to/bug/cancellation, and `XXXX` redaction tokens that would just swap one template artifact for another.)
 
 ## What this is not
 
-1. NOT a production classifier. Bitext is synthetic. The labels are generic e-commerce. The 40–60% on natural language is the honest number.
+1. NOT a production classifier. Bitext is synthetic. The labels are generic e-commerce. The honest result is 40–60% on ten natural messages.
 2. NOT a benchmark of Qwen2.5-1.5B, ModernBERT, or SetFit. A different dataset with tighter label definitions would produce a different result for all three.
 
 ## Stack
@@ -95,10 +97,10 @@ EXPERIMENTS.md              — full comparison table + per-model failure patter
 
 Qwen LoRA round (the original experiment):
 
-| Model | Synthetic val | Natural language |
+| Model | Synthetic val (n=144) | Natural language (n=10) |
 |---|---|---|
 | Baseline | 50.7% | — |
 | v1 fine-tune (576 examples) | 99.3% | 60% |
 | v2 fine-tune (2,104 examples, augmented) | 97.2% | 60% |
 
-Full three-way comparison (Qwen vs ModernBERT vs SetFit) is in the table above and in `EXPERIMENTS.md`. Headline: everything plateaus at 40–60% on natural language — **the ceiling is the data, not the model.**
+Full three-way comparison (Qwen vs ModernBERT vs SetFit) is in the table above and in `EXPERIMENTS.md`. Headline: everything landed at 40–60% on the same ten natural messages—**the ceiling is the data, not the model.**
